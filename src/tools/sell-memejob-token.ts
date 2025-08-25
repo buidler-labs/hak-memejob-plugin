@@ -9,7 +9,7 @@ import {
 import type { z } from "zod";
 import { createMemejob } from "../client";
 import { sellMemejobTokenParameters } from "../memejob.zod";
-import { toTiny } from "../utils";
+import { handleResponse, toTiny } from "../utils";
 
 const sellMemejobTokenPrompt = (context: Context = {}) => {
 	const contextSnippet = PromptGenerator.getContextSnippet(context);
@@ -77,18 +77,29 @@ const sellMemejobToken = async (
 
 		if (context.mode === AgentMode.AUTONOMOUS) {
 			const sellResult = response as MJSellResult;
+			const serializableAmount = Number(sellResult.amount);
 
-			return {
-				...sellResult,
-				amount: Number(sellResult.amount),
-			};
+			return handleResponse(
+				{
+					...sellResult,
+					amount: serializableAmount,
+				},
+				sellResult.status === "success"
+					? `Successfully sold ${serializableAmount} of ${tokenId}. Transaction ID: ${sellResult.transactionIdOrHash}`
+					: `Failed to sell ${tokenId}. Transaction ID: ${sellResult.transactionIdOrHash}`,
+			);
 		}
 
-		return {
-			bytes: Buffer.from(response as Uint8Array<ArrayBufferLike>).toString(
+		const bytes = Buffer.from(response as Uint8Array<ArrayBufferLike>);
+
+		return handleResponse(
+			{
+				bytes,
+			},
+			`Your transaction has been prepared and it's ready to be signed. Hex encoded bytes: ${bytes.toString(
 				"hex",
-			),
-		};
+			)}`,
+		);
 	} catch (error) {
 		console.error("[SellMemejobToken] Error selling memejob token:", error);
 		if (error instanceof Error) {

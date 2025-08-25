@@ -8,7 +8,7 @@ import {
 import type { z } from "zod";
 import { createMemejob } from "../client";
 import { createMemejobTokenParameters } from "../memejob.zod";
-import { toTiny } from "../utils";
+import { handleResponse, toTiny } from "../utils";
 
 const createMemejobTokenPrompt = (context: Context = {}) => {
 	const contextSnippet = PromptGenerator.getContextSnippet(context);
@@ -87,16 +87,24 @@ const createMemejobToken = async (
 			// biome-ignore lint/suspicious/noExplicitAny: MJToken isn't an exposed interface
 			const tokenId = (response as any).tokenId.toString();
 
-			return {
-				tokenId,
-			};
+			return handleResponse(
+				{
+					tokenId,
+				},
+				`Your token has been successfully created. Token ID: ${tokenId}`,
+			);
 		}
 
-		return {
-			bytes: Buffer.from(response as Uint8Array<ArrayBufferLike>).toString(
+		const bytes = Buffer.from(response as Uint8Array<ArrayBufferLike>);
+
+		return handleResponse(
+			{
+				bytes,
+			},
+			`Your transaction has been prepared and it's ready to be signed. Hex encoded bytes: ${bytes.toString(
 				"hex",
-			),
-		};
+			)}`,
+		);
 	} catch (error) {
 		console.error("[CreateMemejobToken] Error creating memejob token:", error);
 		if (error instanceof Error) {

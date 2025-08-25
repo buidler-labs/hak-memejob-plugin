@@ -1,6 +1,6 @@
 {
   "name": "@buidlerlabs/hak-memejob-plugin",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "The official hedera-agent-kit memejob plugin",
   "private": false,
   "repository": {
