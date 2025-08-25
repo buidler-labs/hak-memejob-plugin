@@ -1,40 +1,48 @@
 {
-	"name": "@buidlerlabs/hak-memejob-plugin",
-	"version": "1.0.0",
-	"description": "The official hedera-agent-kit memejob plugin",
-	"main": "./dist/index.js",
-	"files": [
-		"dist/**/*"
-	],
-	"exports": {
-		".": {
-			"types": "./dist/index.d.ts",
-			"require": "./dist/index.js",
-			"import": "./dist/index.mjs"
-		}
-	},
-	"scripts": {
-		"build": "tsup",
-		"check": "biome check --write",
-		"format": "biome format --write",
-		"test": "echo \"Error: no test specified\" && exit 1"
-	},
-	"keywords": [
-		"memejob",
-		"agent-kit",
-		"hedera"
-	],
-	"author": "Buidlerlabs",
-	"license": "MIT",
-	"dependencies": {
-		"@buidlerlabs/memejob-sdk-js": "^0.1.0",
-		"@hashgraph/sdk": "^2.69.0",
-		"hedera-agent-kit": "^3.0.7",
-		"zod": "3.25.76"
-	},
-	"devDependencies": {
-		"@biomejs/biome": "2.2.2",
-		"tsup": "^8.5.0",
-		"typescript": "^5.9.2"
-	}
+  "name": "@buidlerlabs/hak-memejob-plugin",
+  "version": "1.0.0",
+  "description": "The official hedera-agent-kit memejob plugin",
+  "private": false,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/buidler-labs/hak-memejob-plugin.git"
+  },
+  "bugs": {
+    "url": "https://github.com/buidler-labs/hak-memejob-plugin/issues"
+  },
+  "main": "./dist/index.js",
+  "files": [
+    "dist/**/*"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "check": "biome check --write",
+    "format": "biome format --write",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "memejob",
+    "agent-kit",
+    "hedera"
+  ],
+  "author": "Buidlerlabs",
+  "license": "MIT",
+  "dependencies": {
+    "@buidlerlabs/memejob-sdk-js": "^0.1.0",
+    "@hashgraph/sdk": "^2.69.0",
+    "hedera-agent-kit": "^3.0.7",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.2.2",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.2"
+  }
 }
