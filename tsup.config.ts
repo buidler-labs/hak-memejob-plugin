@@ -7,6 +7,6 @@ export default defineConfig([
 		format: ["cjs", "esm"],
 		dts: true,
 		sourcemap: true,
-		external: ["@hashgraph/sdk", "hedera-agent-kit "],
+		external: ["@hashgraph/sdk", "hedera-agent-kit"],
 	},
 ]);
