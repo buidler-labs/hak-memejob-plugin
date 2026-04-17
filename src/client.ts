@@ -5,8 +5,8 @@ import {
 	MJClient,
 	NativeAdapter,
 } from "@buidlerlabs/memejob-sdk-js";
-import { type Client, ContractId } from "@hashgraph/sdk";
-import { AgentMode, type Context } from "hedera-agent-kit";
+import { type Client, ContractId } from "@hiero-ledger/sdk";
+import { AgentMode, type Context } from "@hashgraph/hedera-agent-kit";
 
 /**
  * Supported Memejob network types.

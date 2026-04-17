@@ -1,11 +1,11 @@
 import type { MJSellResult } from "@buidlerlabs/memejob-sdk-js";
-import type { Client } from "@hashgraph/sdk";
+import type { Client } from "@hiero-ledger/sdk";
 import {
 	AgentMode,
 	type Context,
 	PromptGenerator,
 	type Tool,
-} from "hedera-agent-kit";
+} from "@hashgraph/hedera-agent-kit";
 import type { z } from "zod";
 import { createMemejob } from "../client";
 import { sellMemejobTokenParameters } from "../memejob.zod";

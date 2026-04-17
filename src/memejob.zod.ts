@@ -1,4 +1,4 @@
-import type { Context } from "hedera-agent-kit";
+import type { Context } from "@hashgraph/hedera-agent-kit";
 import z from "zod";
 
 export const createMemejobTokenParameters = (_: Context = {}) =>

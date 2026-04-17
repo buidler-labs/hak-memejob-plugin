@@ -1,4 +1,4 @@
-import type { Context, Plugin } from "hedera-agent-kit";
+import type { Context, Plugin } from "@hashgraph/hedera-agent-kit";
 import buyMemejobToken, {
 	BUY_MEMEJOB_TOKEN_TOOL,
 } from "./tools/buy-memejob-token";
