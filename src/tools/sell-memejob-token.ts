@@ -1,11 +1,11 @@
 import type { MJSellResult } from "@buidlerlabs/memejob-sdk-js";
-import type { Client } from "@hiero-ledger/sdk";
 import {
 	AgentMode,
+	BaseTool,
 	type Context,
 	PromptGenerator,
-	type Tool,
 } from "@hashgraph/hedera-agent-kit";
+import type { Client } from "@hiero-ledger/sdk";
 import type { z } from "zod";
 import { createMemejob } from "../client";
 import { sellMemejobTokenParameters } from "../memejob.zod";
@@ -30,39 +30,40 @@ IMPORTANT: When Mode is Return Bytes, always present the transaction bytes to th
 `;
 };
 
-/**
- * Executes the sell memejob token operation.
- *
- * This function handles the core logic for purchasing memecoin tokens on the memejob platform.
- * It supports both autonomous execution and manual transaction signing based on the agent mode.
- *
- * @param client - The Hedera client instance
- * @param context - The agent context containing the operational mode
- * @param params - The validated parameters for the sell operation
- * @returns Promise resolving to either MJSellResult data or transaction bytes based on the operational mode
- *
- * The token amount is automatically converted from decimal to tiny units using the
- * {@link toTiny} utility function.
- *
- * @example
- * ```typescript
- * const result = await sellMemejobToken(client, context, {
- *   required: {
- *     tokenId: '0.0.12345',
- *     amount: 100_000n
- *   },
- *   optional: {
- *     instant: true
- *   }
- * });
- * ```
- */
-const sellMemejobToken = async (
-	client: Client,
-	context: Context,
-	params: z.infer<ReturnType<typeof sellMemejobTokenParameters>>,
-) => {
-	try {
+type SellMemejobTokenParams = z.infer<
+	ReturnType<typeof sellMemejobTokenParameters>
+>;
+
+export const SELL_MEMEJOB_TOKEN_TOOL = "sell_memejob_token_tool";
+
+export class SellMemejobTokenTool extends BaseTool<
+	SellMemejobTokenParams,
+	SellMemejobTokenParams
+> {
+	method = SELL_MEMEJOB_TOKEN_TOOL;
+	name = "Sell Memejob Token";
+	description: string;
+	parameters: ReturnType<typeof sellMemejobTokenParameters>;
+
+	constructor(context: Context) {
+		super();
+		this.description = sellMemejobTokenPrompt(context);
+		this.parameters = sellMemejobTokenParameters(context);
+	}
+
+	async normalizeParams(
+		params: SellMemejobTokenParams,
+		_context: Context,
+		_client: Client,
+	): Promise<SellMemejobTokenParams> {
+		return params;
+	}
+
+	async coreAction(
+		params: SellMemejobTokenParams,
+		context: Context,
+		client: Client,
+	) {
 		const { required, optional } = params;
 		const { tokenId, amount } = required;
 		const { instant = true } = optional || {};
@@ -100,23 +101,24 @@ const sellMemejobToken = async (
 				"hex",
 			)}`,
 		);
-	} catch (error) {
-		console.error("[SellMemejobToken] Error selling memejob token:", error);
-		if (error instanceof Error) {
-			return error.message;
-		}
-		return "Failed to sell memejob token";
 	}
-};
 
-export const SELL_MEMEJOB_TOKEN_TOOL = "sell_memejob_token_tool";
+	async shouldSecondaryAction(_coreActionResult: unknown, _context: Context) {
+		return false;
+	}
 
-const tool = (context: Context): Tool => ({
-	method: SELL_MEMEJOB_TOKEN_TOOL,
-	name: "Sell Memejob Token",
-	description: sellMemejobTokenPrompt(context),
-	parameters: sellMemejobTokenParameters(context),
-	execute: sellMemejobToken,
-});
+	async secondaryAction(_request: unknown, _client: Client, _context: Context) {
+		return null;
+	}
+
+	async handleError(error: unknown, _context: Context) {
+		console.error("[SellMemejobToken] Error selling memejob token:", error);
+		const message =
+			error instanceof Error ? error.message : "Failed to sell memejob token";
+		return handleResponse({ error: message }, message);
+	}
+}
+
+const tool = (context: Context) => new SellMemejobTokenTool(context);
 
 export default tool;

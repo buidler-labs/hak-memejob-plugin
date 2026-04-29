@@ -1,10 +1,10 @@
-import type { Client } from "@hiero-ledger/sdk";
 import {
 	AgentMode,
+	BaseTool,
 	type Context,
 	PromptGenerator,
-	type Tool,
 } from "@hashgraph/hedera-agent-kit";
+import type { Client } from "@hiero-ledger/sdk";
 import type { z } from "zod";
 import { createMemejob } from "../client";
 import { createMemejobTokenParameters } from "../memejob.zod";
@@ -32,39 +32,40 @@ IMPORTANT: When Mode is Return Bytes, always present the transaction bytes to th
 `;
 };
 
-/**
- * Executes the create memejob token operation.
- *
- * This function handles the core logic for creating memecoin tokens on the memejob platform.
- * It supports both autonomous execution and manual transaction signing based on the agent mode.
- *
- * @param client - The Hedera client instance
- * @param context - The agent context containing the operational mode
- * @param params - The validated parameters for the create operation
- * @returns Promise resolving to either MJToken instance or transaction bytes based on the operational mode
- *
- * @example
- * ```typescript
- * const result = await createMemejobToken(client, context, {
- *   required: {
- *     name: 'My Awesome Token',
- *     symbol: 'MAT',
- *     memp: 'ipfs://<cid>'
- *   },
- *   optional: {
- *     amount: 100_000,
- *     distributeRewards: true,
- *     referrer: '0x1234567890abcdef1234567890abcdef12345678'
- *   }
- * });
- * ```
- */
-const createMemejobToken = async (
-	client: Client,
-	context: Context,
-	params: z.infer<ReturnType<typeof createMemejobTokenParameters>>,
-) => {
-	try {
+type CreateMemejobTokenParams = z.infer<
+	ReturnType<typeof createMemejobTokenParameters>
+>;
+
+export const CREATE_MEMEJOB_TOKEN_TOOL = "create_memejob_token_tool";
+
+export class CreateMemejobTokenTool extends BaseTool<
+	CreateMemejobTokenParams,
+	CreateMemejobTokenParams
+> {
+	method = CREATE_MEMEJOB_TOKEN_TOOL;
+	name = "Create Memejob Token";
+	description: string;
+	parameters: ReturnType<typeof createMemejobTokenParameters>;
+
+	constructor(context: Context) {
+		super();
+		this.description = createMemejobTokenPrompt(context);
+		this.parameters = createMemejobTokenParameters(context);
+	}
+
+	async normalizeParams(
+		params: CreateMemejobTokenParams,
+		_context: Context,
+		_client: Client,
+	): Promise<CreateMemejobTokenParams> {
+		return params;
+	}
+
+	async coreAction(
+		params: CreateMemejobTokenParams,
+		context: Context,
+		client: Client,
+	) {
 		const { required, optional } = params;
 		const { name, symbol, memo } = required;
 		const { amount = 0, distributeRewards = false, referrer } = optional || {};
@@ -105,23 +106,24 @@ const createMemejobToken = async (
 				"hex",
 			)}`,
 		);
-	} catch (error) {
-		console.error("[CreateMemejobToken] Error creating memejob token:", error);
-		if (error instanceof Error) {
-			return error.message;
-		}
-		return "Failed to create memejob token";
 	}
-};
 
-export const CREATE_MEMEJOB_TOKEN_TOOL = "create_memejob_token_tool";
+	async shouldSecondaryAction(_coreActionResult: unknown, _context: Context) {
+		return false;
+	}
 
-const tool = (context: Context): Tool => ({
-	method: CREATE_MEMEJOB_TOKEN_TOOL,
-	name: "Create Memejob Token",
-	description: createMemejobTokenPrompt(context),
-	parameters: createMemejobTokenParameters(context),
-	execute: createMemejobToken,
-});
+	async secondaryAction(_request: unknown, _client: Client, _context: Context) {
+		return null;
+	}
+
+	async handleError(error: unknown, _context: Context) {
+		console.error("[CreateMemejobToken] Error creating memejob token:", error);
+		const message =
+			error instanceof Error ? error.message : "Failed to create memejob token";
+		return handleResponse({ error: message }, message);
+	}
+}
+
+const tool = (context: Context) => new CreateMemejobTokenTool(context);
 
 export default tool;
