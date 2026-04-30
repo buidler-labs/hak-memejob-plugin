@@ -1,15 +1,15 @@
-import type { MJBuyResult } from "@buidlerlabs/memejob-sdk-js";
 import {
-	AgentMode,
 	BaseTool,
 	type Context,
 	PromptGenerator,
+	type RawTransactionResponse,
+	transactionToolOutputParser,
 } from "@hashgraph/hedera-agent-kit";
-import type { Client } from "@hiero-ledger/sdk";
+import { type Client, Transaction } from "@hiero-ledger/sdk";
 import type { z } from "zod";
 import { createMemejob } from "../client";
 import { buyMemejobTokenParameters } from "../memejob.zod";
-import { handleResponse, toTiny } from "../utils";
+import { handleResponse, handleTransaction, toTiny } from "../utils";
 
 const buyMemejobTokenPrompt = (context: Context = {}) => {
 	const contextSnippet = PromptGenerator.getContextSnippet(context);
@@ -31,12 +31,44 @@ IMPORTANT: When Mode is Return Bytes, always present the transaction bytes to th
 `;
 };
 
+const buyMemejobTokenPostProcess = (response: RawTransactionResponse) =>
+	`Memejob buy submitted. Status: ${response.status}. Transaction ID: ${response.transactionId}`;
+
 type BuyMemejobTokenParams = z.infer<
 	ReturnType<typeof buyMemejobTokenParameters>
 >;
 
 export const BUY_MEMEJOB_TOKEN_TOOL = "buy_memejob_token_tool";
 
+/**
+ * Tool that buys a memecoin token on the memejob platform.
+ *
+ * The tool follows the two-step `BaseTool` lifecycle:
+ * - {@link BuyMemejobTokenTool.coreAction} asks the memejob SDK (always
+ *   configured to return raw bytes) to build a `ContractExecuteTransaction`
+ *   for the buy operation and reconstructs it via `Transaction.fromBytes`.
+ * - {@link BuyMemejobTokenTool.secondaryAction} delegates to the local
+ *   `handleTransaction` helper, which executes the transaction or returns
+ *   bytes for external signing depending on `context.mode`.
+ *
+ * The token amount is automatically converted from decimal to tiny units using
+ * the {@link toTiny} utility function.
+ *
+ * @example
+ * ```typescript
+ * const tool = new BuyMemejobTokenTool(context);
+ * const result = await tool.execute(client, context, {
+ *   required: {
+ *     tokenId: '0.0.12345',
+ *     amount: 100,
+ *   },
+ *   optional: {
+ *     autoAssociate: true,
+ *     referrer: '0x1234567890abcdef1234567890abcdef12345678',
+ *   },
+ * });
+ * ```
+ */
 export class BuyMemejobTokenTool extends BaseTool<
 	BuyMemejobTokenParams,
 	BuyMemejobTokenParams
@@ -45,6 +77,7 @@ export class BuyMemejobTokenTool extends BaseTool<
 	name = "Buy Memejob Token";
 	description: string;
 	parameters: ReturnType<typeof buyMemejobTokenParameters>;
+	override outputParser = transactionToolOutputParser;
 
 	constructor(context: Context) {
 		super();
@@ -62,55 +95,43 @@ export class BuyMemejobTokenTool extends BaseTool<
 
 	async coreAction(
 		params: BuyMemejobTokenParams,
-		context: Context,
+		_context: Context,
 		client: Client,
 	) {
 		const { required, optional } = params;
 		const { tokenId, amount } = required;
 		const { autoAssociate = false, referrer } = optional || {};
 
-		const memejob = createMemejob(client, context);
+		const memejob = createMemejob(client);
 		const token = await memejob.getToken(tokenId as `0.0.${number}`);
 
-		const response = await token.buy({
+		const bytes = (await token.buy({
 			amount: BigInt(toTiny(amount)),
 			autoAssociate: autoAssociate,
 			referrer: referrer as `0x${string}`,
-		});
+		})) as Uint8Array;
 
-		if (context.mode === AgentMode.AUTONOMOUS) {
-			const buyResult = response as MJBuyResult;
-			const serializableAmount = Number(buyResult.amount);
+		return Transaction.fromBytes(bytes);
+	}
 
-			return handleResponse(
-				{
-					...buyResult,
-					amount: serializableAmount,
-				},
-				buyResult.status === "success"
-					? `Successfully bought ${serializableAmount} of ${tokenId}. Transaction ID: ${buyResult.transactionIdOrHash}`
-					: `Failed to buy ${tokenId}. Transaction ID: ${buyResult.transactionIdOrHash}`,
-			);
-		}
+	override async shouldSecondaryAction(
+		coreActionResult: unknown,
+		_context: Context,
+	) {
+		return coreActionResult instanceof Transaction;
+	}
 
-		const bytes = Buffer.from(response as Uint8Array<ArrayBufferLike>);
-
-		return handleResponse(
-			{
-				bytes,
-			},
-			`Your transaction has been prepared and it's ready to be signed. Hex encoded bytes: ${bytes.toString(
-				"hex",
-			)}`,
+	async secondaryAction(
+		transaction: Transaction,
+		client: Client,
+		context: Context,
+	) {
+		return handleTransaction(
+			transaction,
+			client,
+			context,
+			buyMemejobTokenPostProcess,
 		);
-	}
-
-	async shouldSecondaryAction(_coreActionResult: unknown, _context: Context) {
-		return false;
-	}
-
-	async secondaryAction(_request: unknown, _client: Client, _context: Context) {
-		return null;
 	}
 
 	async handleError(error: unknown, _context: Context) {
