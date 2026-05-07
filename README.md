@@ -19,7 +19,8 @@ npm install @buidlerlabs/hak-memejob-plugin
 ## Quick Start
 
 ```javascript
-import { HederaAIToolkit, AgentMode } from "hedera-agent-kit";
+import { AgentMode } from "@hashgraph/hedera-agent-kit";
+import { HederaAIToolkit } from "@hashgraph/hedera-agent-kit-ai-sdk";
 import { memejobPlugin } from "@buidlerlabs/hak-memejob-plugin";
 
 const hederaAgentToolkit = new HederaAIToolkit({

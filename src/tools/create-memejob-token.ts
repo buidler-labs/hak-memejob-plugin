@@ -1,14 +1,21 @@
-import type { Client } from "@hashgraph/sdk";
 import {
-	AgentMode,
+	BaseTool,
 	type Context,
 	PromptGenerator,
-	type Tool,
-} from "hedera-agent-kit";
+	type RawTransactionResponse,
+	transactionToolOutputParser,
+} from "@hashgraph/hedera-agent-kit";
+import {
+	type Client,
+	TokenId,
+	Transaction,
+	type TransactionId,
+	type TransactionRecord,
+} from "@hiero-ledger/sdk";
 import type { z } from "zod";
 import { createMemejob } from "../client";
 import { createMemejobTokenParameters } from "../memejob.zod";
-import { handleResponse, toTiny } from "../utils";
+import { handleResponse, handleTransaction, toTiny } from "../utils";
 
 const createMemejobTokenPrompt = (context: Context = {}) => {
 	const contextSnippet = PromptGenerator.getContextSnippet(context);
@@ -32,45 +39,85 @@ IMPORTANT: When Mode is Return Bytes, always present the transaction bytes to th
 `;
 };
 
+const createMemejobTokenPostProcess = (response: RawTransactionResponse) => {
+	const tokenId = response.tokenId?.toString();
+	return tokenId
+		? `Your token has been successfully created. Token ID: ${tokenId}. Transaction ID: ${response.transactionId}`
+		: `Your token creation transaction was submitted but the Token ID could not be resolved. Transaction ID: ${response.transactionId}`;
+};
+
+type CreateMemejobTokenParams = z.infer<
+	ReturnType<typeof createMemejobTokenParameters>
+>;
+
+export const CREATE_MEMEJOB_TOKEN_TOOL = "create_memejob_token_tool";
+
 /**
- * Executes the create memejob token operation.
+ * Tool that creates a new memecoin token on the memejob platform.
  *
- * This function handles the core logic for creating memecoin tokens on the memejob platform.
- * It supports both autonomous execution and manual transaction signing based on the agent mode.
- *
- * @param client - The Hedera client instance
- * @param context - The agent context containing the operational mode
- * @param params - The validated parameters for the create operation
- * @returns Promise resolving to either MJToken instance or transaction bytes based on the operational mode
+ * The tool follows the two-step `BaseTool` lifecycle:
+ * - {@link CreateMemejobTokenTool.coreAction} asks the memejob SDK (always
+ *   configured to return raw bytes) to build a `ContractExecuteTransaction`
+ *   that calls the `memeJob` factory contract and reconstructs it via
+ *   `Transaction.fromBytes`.
+ * - {@link CreateMemejobTokenTool.secondaryAction} delegates to the local
+ *   `handleTransaction` helper, which executes the transaction or returns
+ *   bytes for external signing depending on `context.mode`. After execution
+ *   it uses an `extendResponse` callback to resolve the auto-created HTS
+ *   `tokenId` via the SDK's mirror-node lookup, since the token is created by
+ *   the contract and is therefore not present on the receipt.
  *
  * @example
  * ```typescript
- * const result = await createMemejobToken(client, context, {
+ * const tool = new CreateMemejobTokenTool(context);
+ * const result = await tool.execute(client, context, {
  *   required: {
  *     name: 'My Awesome Token',
  *     symbol: 'MAT',
- *     memp: 'ipfs://<cid>'
+ *     memo: 'ipfs://Qm...',
  *   },
  *   optional: {
- *     amount: 100_000,
+ *     amount: 1000,
  *     distributeRewards: true,
- *     referrer: '0x1234567890abcdef1234567890abcdef12345678'
- *   }
+ *   },
  * });
  * ```
  */
-const createMemejobToken = async (
-	client: Client,
-	context: Context,
-	params: z.infer<ReturnType<typeof createMemejobTokenParameters>>,
-) => {
-	try {
+export class CreateMemejobTokenTool extends BaseTool<
+	CreateMemejobTokenParams,
+	CreateMemejobTokenParams
+> {
+	method = CREATE_MEMEJOB_TOKEN_TOOL;
+	name = "Create Memejob Token";
+	description: string;
+	parameters: ReturnType<typeof createMemejobTokenParameters>;
+	override outputParser = transactionToolOutputParser;
+
+	constructor(context: Context) {
+		super();
+		this.description = createMemejobTokenPrompt(context);
+		this.parameters = createMemejobTokenParameters(context);
+	}
+
+	async normalizeParams(
+		params: CreateMemejobTokenParams,
+		_context: Context,
+		_client: Client,
+	): Promise<CreateMemejobTokenParams> {
+		return params;
+	}
+
+	async coreAction(
+		params: CreateMemejobTokenParams,
+		_context: Context,
+		client: Client,
+	) {
 		const { required, optional } = params;
 		const { name, symbol, memo } = required;
 		const { amount = 0, distributeRewards = false, referrer } = optional || {};
 
-		const memejob = createMemejob(client, context);
-		const response = await memejob.createToken(
+		const memejob = createMemejob(client);
+		const bytes = (await memejob.createToken(
 			{
 				name,
 				symbol,
@@ -81,47 +128,67 @@ const createMemejobToken = async (
 				distributeRewards: distributeRewards,
 				referrer: referrer,
 			},
-		);
+		)) as Uint8Array;
 
-		if (context.mode === AgentMode.AUTONOMOUS) {
-			// biome-ignore lint/suspicious/noExplicitAny: MJToken isn't an exposed interface
-			const tokenId = (response as any).tokenId.toString();
-
-			return handleResponse(
-				{
-					tokenId,
-				},
-				`Your token has been successfully created. Token ID: ${tokenId}`,
-			);
-		}
-
-		const bytes = Buffer.from(response as Uint8Array<ArrayBufferLike>);
-
-		return handleResponse(
-			{
-				bytes,
-			},
-			`Your transaction has been prepared and it's ready to be signed. Hex encoded bytes: ${bytes.toString(
-				"hex",
-			)}`,
-		);
-	} catch (error) {
-		console.error("[CreateMemejobToken] Error creating memejob token:", error);
-		if (error instanceof Error) {
-			return error.message;
-		}
-		return "Failed to create memejob token";
+		return Transaction.fromBytes(bytes);
 	}
-};
 
-export const CREATE_MEMEJOB_TOKEN_TOOL = "create_memejob_token_tool";
+	override async shouldSecondaryAction(
+		coreActionResult: unknown,
+		_context: Context,
+	) {
+		return coreActionResult instanceof Transaction;
+	}
 
-const tool = (context: Context): Tool => ({
-	method: CREATE_MEMEJOB_TOKEN_TOOL,
-	name: "Create Memejob Token",
-	description: createMemejobTokenPrompt(context),
-	parameters: createMemejobTokenParameters(context),
-	execute: createMemejobToken,
-});
+	/**
+	 * Resolves the auto-created HTS token ID by reusing the memejob SDK's
+	 * mirror-node based lookup.
+	 *
+	 * The `memeJob` factory contract creates the HTS token internally, so
+	 * neither the receipt nor the contract function result expose the token ID
+	 * directly — it must be discovered by querying the mirror node for
+	 * sibling transactions of type `TOKENCREATION`.
+	 *
+	 * `getTokenIdOnCreate` is `protected` on `MJAdapter`, so we cast through
+	 * `unknown` to invoke it. At runtime the access modifier is a TypeScript
+	 * construct only.
+	 */
+	private extendResponse = async (
+		raw: RawTransactionResponse,
+		record: TransactionRecord,
+		client: Client,
+	): Promise<RawTransactionResponse> => {
+		const adapter = createMemejob(client).adapter as unknown as {
+			getTokenIdOnCreate: (
+				id: TransactionId | string,
+			) => Promise<`0.0.${number}`>;
+		};
+		const tokenIdString = await adapter.getTokenIdOnCreate(record.transactionId);
+		return { ...raw, tokenId: TokenId.fromString(tokenIdString) };
+	};
+
+	async secondaryAction(
+		transaction: Transaction,
+		client: Client,
+		context: Context,
+	) {
+		return handleTransaction(
+			transaction,
+			client,
+			context,
+			createMemejobTokenPostProcess,
+			(raw, record) => this.extendResponse(raw, record, client),
+		);
+	}
+
+	async handleError(error: unknown, _context: Context) {
+		console.error("[CreateMemejobToken] Error creating memejob token:", error);
+		const message =
+			error instanceof Error ? error.message : "Failed to create memejob token";
+		return handleResponse({ error: message }, message);
+	}
+}
+
+const tool = (context: Context) => new CreateMemejobTokenTool(context);
 
 export default tool;
