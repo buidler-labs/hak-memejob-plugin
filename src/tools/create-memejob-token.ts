@@ -163,7 +163,9 @@ export class CreateMemejobTokenTool extends BaseTool<
 				id: TransactionId | string,
 			) => Promise<`0.0.${number}`>;
 		};
-		const tokenIdString = await adapter.getTokenIdOnCreate(record.transactionId);
+		const tokenIdString = await adapter.getTokenIdOnCreate(
+			record.transactionId,
+		);
 		return { ...raw, tokenId: TokenId.fromString(tokenIdString) };
 	};
 

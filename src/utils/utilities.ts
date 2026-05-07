@@ -8,11 +8,10 @@ export const toTiny = (value: number) => {
 	return value * 10 ** MJ_TOKEN_DECIMALS;
 };
 
-
 /**
- * 
- * @param raw 
- * @param message 
+ *
+ * @param raw
+ * @param message
  * @returns Agent kit specific response type
  */
 export const handleResponse = <T>(raw: T, message: string) => {

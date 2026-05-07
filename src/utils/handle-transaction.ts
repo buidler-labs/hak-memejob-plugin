@@ -44,9 +44,8 @@ class ExecuteStrategy implements TxModeStrategy {
 		tx: Transaction,
 		client: Client,
 		_context: Context,
-		postProcess: (
-			response: RawTransactionResponse,
-		) => string = this.defaultPostProcess,
+		postProcess: (response: RawTransactionResponse) => string = this
+			.defaultPostProcess,
 		extendResponse?: (
 			raw: RawTransactionResponse,
 			record: TransactionRecord,
